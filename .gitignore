@@ -1,0 +1,10 @@
+*.bak_*
+token.txt
+jwtdecode.exe
+jwtdecode
+COMMON.md
+GEMINI.md
+help.txt
+config.json
+build.sh
+test.json

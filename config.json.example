@@ -1,0 +1,10 @@
+{
+  "jwtToken": "your_jwt_token_string_or_file_path_or_env_var_name",
+  "tokenType": "string", // Can be "string", "file", or "environment"
+  "outputFormat": "JSON", // Can be "JSON", "CSV", or "XML" (optional, defaults to JSON)
+  "outputFile": "claims.json", // Full path of output file (optional, defaults to claims.<format_extension>)
+  "convertEpoch": true, // Boolean, whether to convert epoch timestamps to human-readable format (default false)
+  "silentExec": false, // Boolean, whether to suppress all output messages (default false)
+  "maxTokenSizeMB": 1, // Integer, Maximum JWT token size in MB (default 1)
+  "maxOutputSizeMB": 100 // Integer, Maximum formatted output size in MB (default 100)
+}After the code is generated, do a deep analysis of the code base produced for recommendations and improvements. They all need to be approved.
