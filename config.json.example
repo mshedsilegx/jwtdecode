@@ -7,4 +7,4 @@
   "silentExec": false, // Boolean, whether to suppress all output messages (default false)
   "maxTokenSizeMB": 1, // Integer, Maximum JWT token size in MB (default 1)
   "maxOutputSizeMB": 100 // Integer, Maximum formatted output size in MB (default 100)
-}After the code is generated, do a deep analysis of the code base produced for recommendations and improvements. They all need to be approved.
+}
