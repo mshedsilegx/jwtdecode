@@ -20,138 +20,94 @@ const (
 	ClaimAuthTime = "auth_time"
 )
 
-// FormatJSON formats claims into a JSON string
-func FormatJSON(claims jwt.MapClaims, convertEpoch bool, epochUnit string) ([]byte, error) {
-	// Create a new map to add human-readable timestamps
-	extendedClaims := make(jwt.MapClaims)
-	for key, value := range claims {
-		extendedClaims[key] = value
+// PreprocessClaims iterates through the claims and, if enabled, adds human-readable
+// datestamps for any epoch values it finds. This should be called once after parsing.
+func PreprocessClaims(claims jwt.MapClaims, convertEpoch bool, epochUnit string) jwt.MapClaims {
+	if !convertEpoch {
+		return claims
+	}
 
-		if convertEpoch {
-			if datestamp, ok := convertEpochToHumanReadable(key, value, epochUnit); ok {
-				extendedClaims[key+"_datestamp"] = datestamp
-			}
+	processedClaims := make(jwt.MapClaims, len(claims))
+	for key, value := range claims {
+		processedClaims[key] = value
+		// Check and add datestamp if applicable
+		if datestamp, ok := convertEpochToHumanReadable(key, value, epochUnit); ok {
+			processedClaims[key+"_datestamp"] = datestamp
 		}
 	}
-	return json.MarshalIndent(extendedClaims, "", "  ")
+	return processedClaims
 }
 
-// convertEpochToHumanReadable attempts to convert a value to a human-readable date string if it's a valid epoch.
-// It checks for common epoch claim names (iat, exp, nbf, auth_time).
-// epochUnit can be "s" (seconds), "ms" (milliseconds), "us" (microseconds), or "ns" (nanoseconds).
-// If empty or invalid, it falls back to a heuristic.
+// convertEpochToHumanReadable attempts to convert a value to a human-readable date string.
 func convertEpochToHumanReadable(key string, value interface{}, epochUnit string) (string, bool) {
+	// Only convert claims that are commonly epoch timestamps
+	isEpochKey := false
 	switch key {
 	case ClaimIAT, ClaimEXP, ClaimNBF, ClaimAuthTime:
-		var timestamp int64
-		switch v := value.(type) {
-		case float64:
-			timestamp = int64(v)
-		case json.Number:
-			i, err := v.Int64()
-			if err != nil {
-				return "", false
-			}
-			timestamp = i
-		default:
+		isEpochKey = true
+	}
+	if !isEpochKey {
+		return "", false
+	}
+
+	var timestamp int64
+	switch v := value.(type) {
+	case float64:
+		timestamp = int64(v)
+	case json.Number:
+		i, err := v.Int64()
+		if err != nil {
 			return "", false
 		}
+		timestamp = i
+	default:
+		return "", false
+	}
 
-		var tm time.Time
-		switch strings.ToLower(epochUnit) {
-		case "s", "seconds":
-			tm = time.Unix(timestamp, 0)
-		case "ms", "milliseconds":
+	var tm time.Time
+	switch strings.ToLower(epochUnit) {
+	case "s", "seconds":
+		tm = time.Unix(timestamp, 0)
+	case "ms", "milliseconds":
+		tm = time.Unix(0, timestamp*int64(time.Millisecond))
+	case "us", "microseconds":
+		tm = time.Unix(0, timestamp*int64(time.Microsecond))
+	case "ns", "nanoseconds":
+		tm = time.Unix(0, timestamp)
+	default:
+		// Fallback to heuristic if unit is not specified or invalid
+		if timestamp > 1e11 { // Heuristic: very large numbers are likely ms/us/ns
 			tm = time.Unix(0, timestamp*int64(time.Millisecond))
-		case "us", "microseconds":
-			tm = time.Unix(0, timestamp*int64(time.Microsecond))
-		case "ns", "nanoseconds":
-			tm = time.Unix(0, timestamp)
-		default:
-			// Fallback to heuristic if unit is not specified or invalid
-			if timestamp > 1e10 { // Heuristic: if timestamp is very large, assume milliseconds
-				tm = time.Unix(0, timestamp*int64(time.Millisecond))
-			} else { // Assume seconds
-				tm = time.Unix(timestamp, 0)
-			}
-		}
-		return tm.UTC().Format("2006-01-02 15:04:05 UTC"), true
-	}
-	return "", false
-}
-
-// flattenClaims recursively flattens nested map claims for CSV output
-// Complex types (maps and arrays) are JSON stringified to prevent data loss.
-func flattenClaims(claims jwt.MapClaims, prefix string, convertEpoch bool, epochUnit string) map[string]interface{} {
-	flattened := make(map[string]interface{})
-	for key, value := range claims {
-		newKey := key
-		if prefix != "" {
-			newKey = prefix + "." + key
-		}
-
-		switch v := value.(type) {
-		case map[string]interface{}:
-			// JSON stringify nested maps to preserve structure
-			jsonBytes, err := json.Marshal(v)
-			if err != nil {
-				flattened[newKey] = "" // Error marshaling to JSON
-			} else {
-				flattened[newKey] = string(jsonBytes)
-			}
-		case []interface{}:
-			// JSON stringify arrays to preserve structure
-			jsonBytes, err := json.Marshal(v)
-			if err != nil {
-				flattened[newKey] = "" // Error marshaling to JSON
-			} else {
-				flattened[newKey] = string(jsonBytes)
-			}
-		default:
-			flattened[newKey] = value
-		}
-
-		// Add human-readable timestamp for CSV
-		if convertEpoch {
-			if datestamp, ok := convertEpochToHumanReadable(key, value, epochUnit); ok {
-				flattened[newKey+"_datestamp"] = datestamp
-			}
+		} else { // Assume seconds
+			tm = time.Unix(timestamp, 0)
 		}
 	}
-	return flattened
+	return tm.UTC().Format("2006-01-02 15:04:05 UTC"), true
 }
 
-// escapeCSVValue prepends a single quote to values that could cause CSV injection.
-func escapeCSVValue(value string) string {
-	if len(value) > 0 && (value[0] == '=' || value[0] == '+' || value[0] == '-' || value[0] == '@') {
-		return "'" + value
-	}
-	return value
+// FormatJSON formats claims into a JSON string.
+func FormatJSON(claims jwt.MapClaims) ([]byte, error) {
+	return json.MarshalIndent(claims, "", "  ")
 }
 
-// FormatCSV formats claims into a CSV string
-// Note: This implementation flattens nested claims and JSON stringifies complex types (maps and arrays).
-// This approach aims to prevent data loss for complex JWT claims, but the resulting CSV cells
-// containing JSON strings will require further parsing if direct access to nested data is needed.
-// It also escapes values to prevent CSV injection.
-func FormatCSV(claims jwt.MapClaims, convertEpoch bool, epochUnit string) ([]byte, error) {
-	flattened := flattenClaims(claims, "", convertEpoch, epochUnit)
+// FormatCSV formats claims into a CSV string.
+func FormatCSV(claims jwt.MapClaims) ([]byte, error) {
+	// CSV still requires flattening, but the epoch conversion is already done.
+	flattened := flattenClaimsForCSV(claims)
 
 	var headers []string
 	for key := range flattened {
 		headers = append(headers, key)
 	}
-	sort.Strings(headers) // Sort headers for consistent output
+	sort.Strings(headers)
 
 	buf := new(bytes.Buffer)
 	writer := csv.NewWriter(buf)
 
-	// Write header row
 	if err := writer.Write(headers); err != nil {
 		return nil, fmt.Errorf("failed to write CSV header: %w", err)
 	}
 
-	// Write data row
 	var row []string
 	for _, header := range headers {
 		row = append(row, escapeCSVValue(fmt.Sprintf("%v", flattened[header])))
@@ -168,41 +124,75 @@ func FormatCSV(claims jwt.MapClaims, convertEpoch bool, epochUnit string) ([]byt
 	return buf.Bytes(), nil
 }
 
-// XMLNode represents a generic XML element for marshaling
-type XMLNode struct {
-	XMLName xml.Name
-	Attrs   []xml.Attr `xml:"-"`
-	Content string     `xml:",chardata"`
-	Nodes   []XMLNode  `xml:",any"`
+// flattenClaimsForCSV recursively flattens claims for CSV output.
+func flattenClaimsForCSV(claims jwt.MapClaims) map[string]interface{} {
+	flattened := make(map[string]interface{})
+	for key, value := range claims {
+		switch v := value.(type) {
+		case map[string]interface{}:
+			jsonBytes, _ := json.Marshal(v)
+			flattened[key] = string(jsonBytes)
+		case []interface{}:
+			jsonBytes, _ := json.Marshal(v)
+			flattened[key] = string(jsonBytes)
+		default:
+			flattened[key] = value
+		}
+	}
+	return flattened
 }
 
-// mapClaimsToXMLNode converts jwt.MapClaims to XMLNode structure
-func mapClaimsToXMLNode(claims jwt.MapClaims, convertEpoch bool, epochUnit string) []XMLNode {
-	var nodes []XMLNode
-	for key, value := range claims {
-		// Add human-readable timestamp for XML as an attribute or child element
-		if convertEpoch {
-			if datestamp, ok := convertEpochToHumanReadable(key, value, epochUnit); ok {
-				nodes = append(nodes, XMLNode{
-					XMLName: xml.Name{Local: key},
-					Content: fmt.Sprintf("%v", value),
-					Attrs:   []xml.Attr{{Name: xml.Name{Local: "datestamp"}, Value: datestamp}},
-				})
-				continue // Skip default handling for this claim as it's already processed
-			}
-		}
+// escapeCSVValue prepends a single quote to values that could cause CSV injection.
+func escapeCSVValue(value string) string {
+	if len(value) > 0 && (value[0] == '=' || value[0] == '+' || value[0] == '-' || value[0] == '@') {
+		return "'" + value
+	}
+	return value
+}
 
+// FormatXML formats claims into an XML string.
+func FormatXML(claims jwt.MapClaims) ([]byte, error) {
+	root := XMLNode{
+		XMLName: xml.Name{Local: "JWTClaims"},
+		Nodes:   mapClaimsToXMLNodes(claims),
+	}
+	output, err := xml.MarshalIndent(root, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal XML: %w", err)
+	}
+	return append([]byte(xml.Header), output...), nil
+}
+
+// XMLNode represents a generic XML element.
+type XMLNode struct {
+	XMLName xml.Name
+	Content string    `xml:",chardata"`
+	Nodes   []XMLNode `xml:",any"`
+}
+
+// mapClaimsToXMLNodes converts map claims to a slice of XMLNode.
+func mapClaimsToXMLNodes(claims jwt.MapClaims) []XMLNode {
+	var nodes []XMLNode
+	// Sort keys for consistent XML output
+	keys := make([]string, 0, len(claims))
+	for k := range claims {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		value := claims[key]
 		switch v := value.(type) {
 		case map[string]interface{}:
 			nodes = append(nodes, XMLNode{
 				XMLName: xml.Name{Local: key},
-				Nodes:   mapClaimsToXMLNode(v, convertEpoch, epochUnit),
+				Nodes:   mapClaimsToXMLNodes(v),
 			})
 		case []interface{}:
 			arrayNode := XMLNode{XMLName: xml.Name{Local: key}}
-			for _, item := range v {
+			for i, item := range v {
 				arrayNode.Nodes = append(arrayNode.Nodes, XMLNode{
-					XMLName: xml.Name{Local: "item"},
+					XMLName: xml.Name{Local: fmt.Sprintf("item_%d", i+1)},
 					Content: fmt.Sprintf("%v", item),
 				})
 			}
@@ -215,20 +205,4 @@ func mapClaimsToXMLNode(claims jwt.MapClaims, convertEpoch bool, epochUnit strin
 		}
 	}
 	return nodes
-}
-
-// FormatXML formats claims into an XML string
-func FormatXML(claims jwt.MapClaims, convertEpoch bool, epochUnit string) ([]byte, error) {
-	root := XMLNode{
-		XMLName: xml.Name{Local: "JWTClaims"},
-		Nodes:   mapClaimsToXMLNode(claims, convertEpoch, epochUnit),
-	}
-
-	// Add XML declaration and indent
-	output, err := xml.MarshalIndent(root, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal XML: %w", err)
-	}
-
-	return append([]byte(xml.Header), output...), nil
 }
