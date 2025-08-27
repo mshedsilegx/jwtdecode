@@ -2,36 +2,10 @@ package token
 
 import (
 	"fmt"
+	"jwtdecode/utils"
 	"os"
-	"path/filepath"
-	"regexp"
 	"strings"
 )
-
-var (
-	// Regex to match common Linux special device files and Windows reserved names
-	specialDeviceRegex = regexp.MustCompile(`(?i)^(/dev/|/proc/|/sys/|nul|con|prn|aux|com[1-9]|lpt[1-9])($|\\|/)`)
-)
-
-// sanitizeFilePath cleans and validates a file path to prevent directory traversal and special device files.
-// It ensures the path is within the current working directory.
-// NOTE: For production-grade applications, a more robust solution might be needed
-// to handle all edge cases of path traversal and special device files across different OS environments.
-func sanitizeFilePath(p string) (string, error) {
-	if p == "" {
-		return "", nil // Allow empty path for defaults
-	}
-
-	// Clean the path to resolve .. and .
-	cleanedPath := filepath.Clean(p)
-
-	// Check against special device regex
-	if specialDeviceRegex.MatchString(cleanedPath) {
-		return "", fmt.Errorf("path %q refers to a disallowed special device file", p)
-	}
-
-	return cleanedPath, nil
-}
 
 // GetToken reads the JWT token based on the specified type and source value.
 func GetToken(tokenType string, tokenSourceValue string) (string, error) {
@@ -42,7 +16,7 @@ func GetToken(tokenType string, tokenSourceValue string) (string, error) {
 	case "string":
 		jwtToken = tokenSourceValue
 	case "file":
-		tokenSourceValue, err = sanitizeFilePath(tokenSourceValue)
+		tokenSourceValue, err = utils.SanitizeFilePath(tokenSourceValue)
 		if err != nil {
 			return "", fmt.Errorf("sanitizing token file path: %w", err)
 		}

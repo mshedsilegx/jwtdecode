@@ -22,6 +22,7 @@ The application supports the following command-line flags:
     *   **Important:** If `-config` is used, it must be the *sole* argument. No other command-line flags (including token input, output format, or output file) can be present.
 *   `-version`: Displays the current version of the application and exits.
 *   `-convert-epoch`: A boolean flag that, if set, converts Unix epoch timestamps found in the JWT claims (e.g., `iat`, `exp`, `nbf`) into human-readable date and time strings in the output.
+*   `-epoch-unit <unit>`: Specifies the unit for epoch timestamps (`s`, `ms`, `us`, `ns`). If not provided, the application will use a heuristic to guess the unit.
 *   `-silent`: A boolean flag that, if set, suppresses all non-error output messages from the application.
 *   `-max-token-size <int>`: Sets the maximum allowed size for the JWT token in megabytes (MB). Tokens exceeding this size will result in an error.
     *   Default: `1` MB.
@@ -39,6 +40,7 @@ The `config.json` file allows you to define all application parameters in a stru
   "outputFormat": "JSON",
   "outputFile": "claims.json",
   "convertEpoch": true,
+  "epochUnit": "s",
   "silentExec": false,
   "maxTokenSizeMB": 1,
   "maxOutputSizeMB": 100
