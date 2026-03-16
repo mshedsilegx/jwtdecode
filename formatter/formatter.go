@@ -22,6 +22,7 @@ const (
 
 // PreprocessClaims iterates through the claims and, if enabled, adds human-readable
 // datestamps for any epoch values it finds. This should be called once after parsing.
+// It specifically targets standard JWT epoch claims like 'iat', 'exp', 'nbf', and 'auth_time'.
 func PreprocessClaims(claims jwt.MapClaims, convertEpoch bool, epochUnit string) jwt.MapClaims {
 	if !convertEpoch {
 		return claims
@@ -30,7 +31,7 @@ func PreprocessClaims(claims jwt.MapClaims, convertEpoch bool, epochUnit string)
 	processedClaims := make(jwt.MapClaims, len(claims))
 	for key, value := range claims {
 		processedClaims[key] = value
-		// Check and add datestamp if applicable
+		// Check and add datestamp if applicable (e.g., "iat_datestamp")
 		if datestamp, ok := convertEpochToHumanReadable(key, value, epochUnit); ok {
 			processedClaims[key+"_datestamp"] = datestamp
 		}
@@ -38,9 +39,10 @@ func PreprocessClaims(claims jwt.MapClaims, convertEpoch bool, epochUnit string)
 	return processedClaims
 }
 
-// convertEpochToHumanReadable attempts to convert a value to a human-readable date string.
+// convertEpochToHumanReadable attempts to convert a numeric value to a human-readable
+// UTC date string if the key matches a known epoch claim.
 func convertEpochToHumanReadable(key string, value interface{}, epochUnit string) (string, bool) {
-	// Only convert claims that are commonly epoch timestamps
+	// 1. Filter: Only convert claims that are commonly known to be epoch timestamps
 	isEpochKey := false
 	switch key {
 	case ClaimIAT, ClaimEXP, ClaimNBF, ClaimAuthTime:
@@ -50,6 +52,7 @@ func convertEpochToHumanReadable(key string, value interface{}, epochUnit string
 		return "", false
 	}
 
+	// 2. Extraction: Extract numeric value from interface (handles float64 and json.Number)
 	var timestamp int64
 	switch v := value.(type) {
 	case float64:
@@ -64,6 +67,7 @@ func convertEpochToHumanReadable(key string, value interface{}, epochUnit string
 		return "", false
 	}
 
+	// 3. Conversion: Convert based on specified unit or use heuristic for auto-detection
 	var tm time.Time
 	switch strings.ToLower(epochUnit) {
 	case "s", "seconds":
@@ -75,26 +79,29 @@ func convertEpochToHumanReadable(key string, value interface{}, epochUnit string
 	case "ns", "nanoseconds":
 		tm = time.Unix(0, timestamp)
 	default:
-		// Fallback to heuristic if unit is not specified or invalid
-		if timestamp > 1e11 { // Heuristic: very large numbers are likely ms/us/ns
+		// Fallback to heuristic: if timestamp is very large, assume ms; else assume seconds.
+		if timestamp > 1e11 {
 			tm = time.Unix(0, timestamp*int64(time.Millisecond))
-		} else { // Assume seconds
+		} else {
 			tm = time.Unix(timestamp, 0)
 		}
 	}
+	// Return UTC formatted string
 	return tm.UTC().Format("2006-01-02 15:04:05 UTC"), true
 }
 
-// FormatJSON formats claims into a JSON string.
+// FormatJSON formats claims into a pretty-printed JSON byte slice.
 func FormatJSON(claims jwt.MapClaims) ([]byte, error) {
 	return json.MarshalIndent(claims, "", "  ")
 }
 
-// FormatCSV formats claims into a CSV string.
+// FormatCSV formats claims into a CSV byte slice.
+// It flattens nested structures (maps/slices) into JSON strings for CSV compatibility.
 func FormatCSV(claims jwt.MapClaims) ([]byte, error) {
-	// CSV still requires flattening, but the epoch conversion is already done.
+	// 1. Flatten nested maps and slices
 	flattened := flattenClaimsForCSV(claims)
 
+	// 2. Prepare sorted headers for deterministic output
 	var headers []string
 	for key := range flattened {
 		headers = append(headers, key)
@@ -104,10 +111,12 @@ func FormatCSV(claims jwt.MapClaims) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	writer := csv.NewWriter(buf)
 
+	// 3. Write header row
 	if err := writer.Write(headers); err != nil {
 		return nil, fmt.Errorf("failed to write CSV header: %w", err)
 	}
 
+	// 4. Write data row with CSV injection protection
 	var row []string
 	for _, header := range headers {
 		row = append(row, escapeCSVValue(fmt.Sprintf("%v", flattened[header])))

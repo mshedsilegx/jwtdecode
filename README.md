@@ -70,6 +70,18 @@ The `config.json` file allows you to define all application parameters in a stru
 *   `maxOutputSizeMB` (integer): Same as the `-max-output-size` command-line parameter.
     *   **Optional:** Defaults to `100`.
 
+## Security Features
+
+The application implements several security measures to ensure safe handling of JWT tokens and output data:
+
+1.  **Directory Traversal Protection (G304):** Uses `os.OpenRoot` (Go 1.24+) to scope file access when reading tokens or configuration files, preventing unauthorized access to system files.
+2.  **Path Sanitization:** All user-provided file paths are cleaned and validated against special device names (e.g., `/dev/`, `NUL`, `CON`) to prevent hardware-level exploits.
+3.  **Secure File Permissions (G306):** Output files are created with `0600` permissions (read/write for owner only) to protect sensitive JWT claims.
+4.  **Resource Exhaustion Protection:** 
+    *   **Max Token Size:** Limits the size of the input JWT (default 1MB).
+    *   **Max Output Size:** Limits the size of the formatted output (default 100MB).
+5.  **CSV Injection Protection:** Prepends a single quote to cells starting with unsafe characters (`=`, `+`, `-`, `@`).
+
 ## Architectural Guidelines
 
 This application was developed following a set of strict architectural guidelines to ensure quality, maintainability, and security. These include:

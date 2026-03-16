@@ -16,22 +16,25 @@ var (
 	version = "dev"
 )
 
+// main is the entry point of the jwtdecode application.
+// It orchestrates the configuration loading, token parsing, claims preprocessing,
+// formatting, and final output writing.
 func main() {
-	// Load configuration using the new centralized function
+	// 1. Load configuration (flags, config file, or environment)
 	appConfig, err := config.LoadConfig(version)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
 		os.Exit(1)
 	}
 
-	// The rest of the main function remains focused on execution logic
+	// 2. Execution logic start
 	if !appConfig.IsSilent {
 		fmt.Println("Decoding JWT token...")
-		// Optional: Print a snippet of the token for user feedback
+		// Print a snippet of the token for immediate user confirmation
 		printTokenSnippet(appConfig.JWTToken)
 	}
 
-	// Parse the JWT token
+	// 3. Parse the JWT token (unverified as we are only decoding claims)
 	token, _, err := new(jwt.Parser).ParseUnverified(appConfig.JWTToken, jwt.MapClaims{})
 	if err != nil {
 		logAndExit("Error parsing JWT token: %v", err)
@@ -39,13 +42,13 @@ func main() {
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		logAndExit("Error: Could not get claims from token.")
+		logAndExit("Error: Could not extract claims from token.")
 	}
 
-	// Pre-process claims to handle epoch conversion before formatting
+	// 4. Pre-process claims (e.g., handle epoch-to-human-readable conversion)
 	processedClaims := formatter.PreprocessClaims(claims, appConfig.ConvertEpoch, appConfig.EpochUnit)
 
-	// Format the claims based on the configuration
+	// 5. Format the claims into the requested output format (JSON, CSV, or XML)
 	var outputData []byte
 	switch appConfig.OutputFormat {
 	case config.OutputFormatJSON:
@@ -62,12 +65,12 @@ func main() {
 		logAndExit("Error formatting output: %v", err)
 	}
 
-	// Resource Exhaustion Protection: Output Size Limit
+	// 6. Security Check: Prevent Resource Exhaustion (Output Size)
 	if len(outputData) > appConfig.MaxOutputSize*1024*1024 {
 		logAndExit("Error: Formatted output size exceeds %dMB limit.", appConfig.MaxOutputSize)
 	}
 
-	// Write the output to the specified file
+	// 7. Persist the output to the specified file
 	if err := output.WriteOutput(outputData, appConfig.OutputFile); err != nil {
 		logAndExit("Error writing output to file: %v", err)
 	}
