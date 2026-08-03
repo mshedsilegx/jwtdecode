@@ -1,4 +1,4 @@
-module jwtdecode
+module criticalsys.net/jwtdecode
 
 go 1.25.0
 

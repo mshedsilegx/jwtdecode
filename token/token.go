@@ -2,7 +2,7 @@ package token
 
 import (
 	"fmt"
-	"jwtdecode/utils"
+	"criticalsys.net/jwtdecode/utils"
 	"os"
 	"path/filepath"
 	"strings"

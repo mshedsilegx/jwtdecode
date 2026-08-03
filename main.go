@@ -6,9 +6,9 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"jwtdecode/config"
-	"jwtdecode/formatter"
-	"jwtdecode/output"
+	"criticalsys.net/jwtdecode/config"
+	"criticalsys.net/jwtdecode/formatter"
+	"criticalsys.net/jwtdecode/output"
 )
 
 var (
